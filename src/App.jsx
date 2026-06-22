@@ -1,8 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { roadmap, totalProblems } from "./data";
 import "./index.css";
 
 const STORAGE_KEY = "lc_grind_v1";
+const NOTES_KEY = "lc_notes_v1";
+const CODE_KEY = "lc_code_v1";
 const difficultyOrder = { Easy: 0, Medium: 1, Hard: 2 };
 
 function useProgress() {
@@ -21,6 +23,293 @@ function useProgress() {
     if (window.confirm("Reset all progress?")) setCompleted({});
   };
   return { completed, toggle, reset };
+}
+
+function useNotesAndCode() {
+  const [notes, setNotes] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(NOTES_KEY)) || {};
+    } catch {
+      return {};
+    }
+  });
+  const [code, setCode] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(CODE_KEY)) || {};
+    } catch {
+      return {};
+    }
+  });
+
+  const saveNote = (id, text) => {
+    setNotes((prev) => {
+      const next = { ...prev, [id]: text };
+      localStorage.setItem(NOTES_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+  const saveCode = (id, text) => {
+    setCode((prev) => {
+      const next = { ...prev, [id]: text };
+      localStorage.setItem(CODE_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  return { notes, code, saveNote, saveCode };
+}
+
+/* ── Modal ── */
+function Modal({ problem, mode, onClose, initialValue, onSave }) {
+  const [value, setValue] = useState(initialValue || "");
+  const textareaRef = useRef(null);
+
+  useEffect(() => {
+    textareaRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  const isCode = mode === "code";
+  const title = isCode ? "Code" : "Notes";
+  const placeholder = isCode
+    ? "# Paste or type your solution here...\ndef twoSum(nums, target):\n    seen = {}\n    for i, n in enumerate(nums):\n        if target - n in seen:\n            return [seen[target - n], i]\n        seen[n] = i"
+    : "Write your approach, observations, or key insights here...\n\nExample:\n• Brute force: O(n²) — nested loops\n• Optimized: use a hash map for O(n)\n• Edge cases: empty array, duplicates";
+
+  return (
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.65)",
+        zIndex: 1000,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "20px 16px",
+      }}
+    >
+      <div
+        style={{
+          background: "#16161e",
+          border: "1px solid rgba(255,255,255,0.1)",
+          borderRadius: 16,
+          width: "100%",
+          maxWidth: 680,
+          display: "flex",
+          flexDirection: "column",
+          maxHeight: "85vh",
+          overflow: "hidden",
+          boxShadow: "0 24px 64px rgba(0,0,0,0.6)",
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            padding: "16px 20px",
+            borderBottom: "1px solid rgba(255,255,255,0.08)",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            flexShrink: 0,
+          }}
+        >
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 8,
+              background: isCode
+                ? "rgba(59,130,246,0.15)"
+                : "rgba(244,114,182,0.15)",
+              border: `1px solid ${isCode ? "rgba(59,130,246,0.3)" : "rgba(244,114,182,0.3)"}`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 15,
+              flexShrink: 0,
+            }}
+          >
+            {isCode ? "⌨" : "📝"}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 13,
+                color: "rgba(255,255,255,0.4)",
+                fontFamily: "'JetBrains Mono', monospace",
+                marginBottom: 2,
+              }}
+            >
+              {title}
+            </div>
+            <div
+              style={{
+                fontSize: 15,
+                fontWeight: 700,
+                color: "#e8e8f0",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {problem.name}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 8,
+              background: "transparent",
+              border: "1px solid rgba(255,255,255,0.1)",
+              color: "rgba(255,255,255,0.4)",
+              fontSize: 18,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Textarea */}
+        <div
+          style={{
+            flex: 1,
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <textarea
+            ref={textareaRef}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder={placeholder}
+            style={{
+              flex: 1,
+              width: "100%",
+              background: "transparent",
+              border: "none",
+              outline: "none",
+              resize: "none",
+              padding: "16px 20px",
+              fontSize: isCode ? 13 : 14,
+              fontFamily: isCode ? "'JetBrains Mono', monospace" : "inherit",
+              color: "#e8e8f0",
+              lineHeight: isCode ? 1.7 : 1.6,
+              minHeight: 280,
+              boxSizing: "border-box",
+              tabSize: 2,
+            }}
+            onKeyDown={(e) => {
+              if (isCode && e.key === "Tab") {
+                e.preventDefault();
+                const start = e.target.selectionStart;
+                const end = e.target.selectionEnd;
+                const newVal =
+                  value.substring(0, start) + "  " + value.substring(end);
+                setValue(newVal);
+                setTimeout(() => {
+                  e.target.selectionStart = e.target.selectionEnd = start + 2;
+                }, 0);
+              }
+            }}
+          />
+        </div>
+
+        {/* Footer */}
+        <div
+          style={{
+            padding: "12px 20px",
+            borderTop: "1px solid rgba(255,255,255,0.08)",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexShrink: 0,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 12,
+              color: "rgba(255,255,255,0.25)",
+              fontFamily: "'JetBrains Mono', monospace",
+            }}
+          >
+            {value.length} chars{isCode ? " · Tab = 2 spaces" : ""}
+          </span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={onClose}
+              style={{
+                padding: "7px 16px",
+                borderRadius: 8,
+                fontSize: 13,
+                fontWeight: 600,
+                background: "transparent",
+                color: "rgba(255,255,255,0.4)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                onSave(value);
+                onClose();
+              }}
+              style={{
+                padding: "7px 20px",
+                borderRadius: 8,
+                fontSize: 13,
+                fontWeight: 700,
+                background: isCode ? "#2563eb" : "#f1459e",
+                color: "#fff",
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Small indicator dot shown when a problem has content saved ── */
+function SavedDot({ color }) {
+  return (
+    <div
+      style={{
+        width: 6,
+        height: 6,
+        borderRadius: "50%",
+        background: color,
+        position: "absolute",
+        top: 3,
+        right: 3,
+        pointerEvents: "none",
+      }}
+    />
+  );
 }
 
 function ProgressRing({
@@ -79,15 +368,6 @@ function HeroStats({ completed, total }) {
         position: "relative",
       }}
     >
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          // background:
-          //   "radial-gradient(ellipse 70% 60% at 50% 0%, rgba(244,114,182,0.08) 0%, transparent 70%)",
-          pointerEvents: "none",
-        }}
-      />
       <div style={{ position: "relative" }}>
         <div
           style={{
@@ -111,7 +391,6 @@ function HeroStats({ completed, total }) {
           style={{
             fontSize: "clamp(2rem, 5vw, 3.5rem)",
             fontWeight: 800,
-            // background: "linear-gradient(135deg, #e8e8f0 30%, #eb2c8f 100%)",
             background: "#e8e8f0",
             WebkitBackgroundClip: "text",
             WebkitTextFillColor: "transparent",
@@ -263,17 +542,69 @@ function FilterBar({ filter, setFilter, sortBy, setSortBy }) {
   );
 }
 
-function ProblemRow({ problem, done, onToggle }) {
+function ProblemRow({
+  problem,
+  done,
+  onToggle,
+  hasNote,
+  hasCode,
+  onOpenNote,
+  onOpenCode,
+}) {
   const diffColor = { Easy: "#22c55e", Medium: "#f59e0b", Hard: "#ef4444" }[
     problem.difficulty
   ];
+
+  const iconBtn = (label, color, hasSaved, onClick, children) => (
+    <div style={{ position: "relative", flexShrink: 0 }}>
+      <button
+        title={label}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick();
+        }}
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: 7,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: hasSaved ? `${color}18` : "var(--bg4)",
+          border: `1px solid ${hasSaved ? `${color}50` : "var(--border)"}`,
+          color: hasSaved ? color : "var(--text3)",
+          fontSize: 13,
+          cursor: "pointer",
+          transition: "all 0.15s",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = `${color}18`;
+          e.currentTarget.style.borderColor = `${color}50`;
+          e.currentTarget.style.color = color;
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = hasSaved
+            ? `${color}18`
+            : "var(--bg4)";
+          e.currentTarget.style.borderColor = hasSaved
+            ? `${color}50`
+            : "var(--border)";
+          e.currentTarget.style.color = hasSaved ? color : "var(--text3)";
+        }}
+      >
+        {children}
+      </button>
+      {hasSaved && <SavedDot color={color} />}
+    </div>
+  );
+
   return (
     <div
       onClick={onToggle}
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 12,
+        gap: 10,
         padding: "10px 14px",
         borderRadius: 10,
         background: done ? "rgba(244,114,182,0.06)" : "transparent",
@@ -315,6 +646,7 @@ function ProblemRow({ problem, done, onToggle }) {
           </svg>
         )}
       </div>
+
       <span
         style={{
           flex: 1,
@@ -326,6 +658,7 @@ function ProblemRow({ problem, done, onToggle }) {
       >
         {problem.name}
       </span>
+
       <span
         style={{
           fontSize: 11,
@@ -341,6 +674,52 @@ function ProblemRow({ problem, done, onToggle }) {
       >
         {problem.difficulty}
       </span>
+
+      {/* Notes button */}
+      {iconBtn(
+        "Notes",
+        "#f1459e",
+        hasNote,
+        onOpenNote,
+        <svg
+          width="13"
+          height="13"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14,2 14,8 20,8" />
+          <line x1="16" y1="13" x2="8" y2="13" />
+          <line x1="16" y1="17" x2="8" y2="17" />
+        </svg>,
+      )}
+
+      {/* Code button */}
+      {iconBtn(
+        "Code",
+        "#3b82f6",
+        hasCode,
+        onOpenCode,
+        <svg
+          width="13"
+          height="13"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <polyline points="16,18 22,12 16,6" />
+          <polyline points="8,6 2,12 8,18" />
+        </svg>,
+      )}
+
+      {/* LeetCode link */}
       <a
         href={problem.leetcodeUrl}
         target="_blank"
@@ -375,7 +754,17 @@ function ProblemRow({ problem, done, onToggle }) {
   );
 }
 
-function SectionCard({ section, completed, toggle, filter, sortBy }) {
+function SectionCard({
+  section,
+  completed,
+  toggle,
+  filter,
+  sortBy,
+  notes,
+  code,
+  onOpenNote,
+  onOpenCode,
+}) {
   const [open, setOpen] = useState(true);
   const doneCount = section.problems.filter((p) => completed[p.id]).length;
   const pct = Math.round((doneCount / section.problems.length) * 100);
@@ -524,6 +913,7 @@ function SectionCard({ section, completed, toggle, filter, sortBy }) {
           </div>
         </div>
       </div>
+
       <div style={{ height: 2, background: "var(--border)" }}>
         <div
           style={{
@@ -535,6 +925,7 @@ function SectionCard({ section, completed, toggle, filter, sortBy }) {
           }}
         />
       </div>
+
       {open && (
         <div style={{ padding: "8px 12px 12px" }}>
           <div
@@ -562,6 +953,10 @@ function SectionCard({ section, completed, toggle, filter, sortBy }) {
                 problem={p}
                 done={!!completed[p.id]}
                 onToggle={() => toggle(p.id)}
+                hasNote={!!notes[p.id]}
+                hasCode={!!code[p.id]}
+                onOpenNote={() => onOpenNote(p)}
+                onOpenCode={() => onOpenCode(p)}
               />
             ))}
           </div>
@@ -573,13 +968,20 @@ function SectionCard({ section, completed, toggle, filter, sortBy }) {
 
 export default function App() {
   const { completed, toggle, reset } = useProgress();
+  const { notes, code, saveNote, saveCode } = useNotesAndCode();
   const [filter, setFilter] = useState("All");
   const [sortBy, setSortBy] = useState("roadmap");
+  const [modal, setModal] = useState(null); // { problem, mode: "note"|"code" }
   const totalDone = Object.values(completed).filter(Boolean).length;
+
+  const openNote = (problem) => setModal({ problem, mode: "note" });
+  const openCode = (problem) => setModal({ problem, mode: "code" });
+  const closeModal = () => setModal(null);
 
   return (
     <div style={{ maxWidth: 860, margin: "0 auto", padding: "0 16px 80px" }}>
       <HeroStats completed={totalDone} total={totalProblems} />
+
       <div
         style={{
           display: "flex",
@@ -621,12 +1023,14 @@ export default function App() {
           reset progress
         </button>
       </div>
+
       <FilterBar
         filter={filter}
         setFilter={setFilter}
         sortBy={sortBy}
         setSortBy={setSortBy}
       />
+
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {roadmap.map((section) => (
           <SectionCard
@@ -636,9 +1040,14 @@ export default function App() {
             toggle={toggle}
             filter={filter}
             sortBy={sortBy}
+            notes={notes}
+            code={code}
+            onOpenNote={openNote}
+            onOpenCode={openCode}
           />
         ))}
       </div>
+
       <div
         style={{
           textAlign: "center",
@@ -650,6 +1059,24 @@ export default function App() {
       >
         progress saved locally · built for the grind 🔥
       </div>
+
+      {modal && (
+        <Modal
+          problem={modal.problem}
+          mode={modal.mode}
+          onClose={closeModal}
+          initialValue={
+            modal.mode === "note"
+              ? notes[modal.problem.id]
+              : code[modal.problem.id]
+          }
+          onSave={(val) =>
+            modal.mode === "note"
+              ? saveNote(modal.problem.id, val)
+              : saveCode(modal.problem.id, val)
+          }
+        />
+      )}
     </div>
   );
 }
