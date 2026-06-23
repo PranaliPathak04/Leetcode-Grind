@@ -5,6 +5,7 @@ import "./index.css";
 const STORAGE_KEY = "lc_grind_v1";
 const NOTES_KEY = "lc_notes_v1";
 const CODE_KEY = "lc_code_v1";
+const DATES_KEY = "lc_dates_v1";
 const difficultyOrder = { Easy: 0, Medium: 1, Hard: 2 };
 
 function useProgress() {
@@ -15,14 +16,41 @@ function useProgress() {
       return {};
     }
   });
+  const [dates, setDates] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(DATES_KEY)) || {};
+    } catch {
+      return {};
+    }
+  });
+
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(completed));
   }, [completed]);
-  const toggle = (id) => setCompleted((p) => ({ ...p, [id]: !p[id] }));
-  const reset = () => {
-    if (window.confirm("Reset all progress?")) setCompleted({});
+  useEffect(() => {
+    localStorage.setItem(DATES_KEY, JSON.stringify(dates));
+  }, [dates]);
+
+  const toggle = (id) => {
+    setCompleted((p) => {
+      const nowDone = !p[id];
+      setDates((d) => {
+        const next = { ...d };
+        if (nowDone) next[id] = new Date().toISOString();
+        else delete next[id];
+        return next;
+      });
+      return { ...p, [id]: nowDone };
+    });
   };
-  return { completed, toggle, reset };
+  const reset = () => {
+    if (window.confirm("Reset all progress?")) {
+      setCompleted({});
+      setDates({});
+      localStorage.removeItem(DATES_KEY);
+    }
+  };
+  return { completed, dates, toggle, reset };
 }
 
 function useNotesAndCode() {
@@ -545,6 +573,7 @@ function FilterBar({ filter, setFilter, sortBy, setSortBy }) {
 function ProblemRow({
   problem,
   done,
+  completedAt,
   onToggle,
   hasNote,
   hasCode,
@@ -659,6 +688,25 @@ function ProblemRow({
         {problem.name}
       </span>
 
+      {done && completedAt && (
+        <span
+          title={new Date(completedAt).toLocaleString()}
+          style={{
+            fontSize: 12,
+            color: "#67e8f9",
+            fontFamily: "'JetBrains Mono', monospace",
+            whiteSpace: "nowrap",
+            flexShrink: 0,
+          }}
+        >
+          ✓{" "}
+          {new Date(completedAt).toLocaleDateString("en-GB", {
+            day: "numeric",
+            month: "short",
+          })}
+        </span>
+      )}
+
       <span
         style={{
           fontSize: 11,
@@ -757,6 +805,7 @@ function ProblemRow({
 function SectionCard({
   section,
   completed,
+  dates,
   toggle,
   filter,
   sortBy,
@@ -952,6 +1001,7 @@ function SectionCard({
                 key={p.id}
                 problem={p}
                 done={!!completed[p.id]}
+                completedAt={dates[p.id]}
                 onToggle={() => toggle(p.id)}
                 hasNote={!!notes[p.id]}
                 hasCode={!!code[p.id]}
@@ -967,7 +1017,7 @@ function SectionCard({
 }
 
 export default function App() {
-  const { completed, toggle, reset } = useProgress();
+  const { completed, dates, toggle, reset } = useProgress();
   const { notes, code, saveNote, saveCode } = useNotesAndCode();
   const [filter, setFilter] = useState("All");
   const [sortBy, setSortBy] = useState("roadmap");
@@ -1037,6 +1087,7 @@ export default function App() {
             key={section.id}
             section={section}
             completed={completed}
+            dates={dates}
             toggle={toggle}
             filter={filter}
             sortBy={sortBy}
