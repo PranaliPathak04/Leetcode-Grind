@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef } from "react";
-import { roadmap, totalProblems } from "./data";
+import { roadmap, totalProblems, companies } from "./data";
 import "./index.css";
 
 const STORAGE_KEY = "lc_grind_v1";
 const NOTES_KEY = "lc_notes_v1";
 const CODE_KEY = "lc_code_v1";
 const DATES_KEY = "lc_dates_v1";
+const COMPANY_KEY = "lc_company_v1";
 const difficultyOrder = { Easy: 0, Medium: 1, Hard: 2 };
 
+/* ── hooks ── */
 function useProgress() {
   const [completed, setCompleted] = useState(() => {
     try {
@@ -23,34 +25,45 @@ function useProgress() {
       return {};
     }
   });
-
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(completed));
   }, [completed]);
   useEffect(() => {
     localStorage.setItem(DATES_KEY, JSON.stringify(dates));
   }, [dates]);
-
-  const toggle = (id) => {
+  const toggle = (id) =>
     setCompleted((p) => {
       const nowDone = !p[id];
       setDates((d) => {
-        const next = { ...d };
-        if (nowDone) next[id] = new Date().toISOString();
-        else delete next[id];
-        return next;
+        const n = { ...d };
+        if (nowDone) n[id] = new Date().toISOString();
+        else delete n[id];
+        return n;
       });
       return { ...p, [id]: nowDone };
     });
-  };
   const reset = () => {
     if (window.confirm("Reset all progress?")) {
       setCompleted({});
       setDates({});
-      localStorage.removeItem(DATES_KEY);
     }
   };
   return { completed, dates, toggle, reset };
+}
+
+function useCompanyProgress() {
+  const [completed, setCompleted] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(COMPANY_KEY)) || {};
+    } catch {
+      return {};
+    }
+  });
+  useEffect(() => {
+    localStorage.setItem(COMPANY_KEY, JSON.stringify(completed));
+  }, [completed]);
+  const toggle = (id) => setCompleted((p) => ({ ...p, [id]: !p[id] }));
+  return { completed, toggle };
 }
 
 function useNotesAndCode() {
@@ -68,48 +81,81 @@ function useNotesAndCode() {
       return {};
     }
   });
-
-  const saveNote = (id, text) => {
-    setNotes((prev) => {
-      const next = { ...prev, [id]: text };
-      localStorage.setItem(NOTES_KEY, JSON.stringify(next));
-      return next;
+  const saveNote = (id, v) =>
+    setNotes((p) => {
+      const n = { ...p, [id]: v };
+      localStorage.setItem(NOTES_KEY, JSON.stringify(n));
+      return n;
     });
-  };
-  const saveCode = (id, text) => {
-    setCode((prev) => {
-      const next = { ...prev, [id]: text };
-      localStorage.setItem(CODE_KEY, JSON.stringify(next));
-      return next;
+  const saveCode = (id, v) =>
+    setCode((p) => {
+      const n = { ...p, [id]: v };
+      localStorage.setItem(CODE_KEY, JSON.stringify(n));
+      return n;
     });
-  };
-
   return { notes, code, saveNote, saveCode };
+}
+
+/* ── helpers ── */
+function daysUntil(dateStr) {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const target = new Date(dateStr);
+  target.setHours(0, 0, 0, 0);
+  return Math.ceil((target - now) / 86400000);
+}
+
+function ProgressRing({
+  value,
+  max,
+  size = 64,
+  stroke = 5,
+  color = "#f472b6",
+}) {
+  const r = (size - stroke * 2) / 2;
+  const circ = 2 * Math.PI * r;
+  const pct = max ? value / max : 0;
+  return (
+    <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke="#2a2a3a"
+        strokeWidth={stroke}
+      />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke={color}
+        strokeWidth={stroke}
+        strokeLinecap="round"
+        strokeDasharray={circ}
+        strokeDashoffset={circ * (1 - pct)}
+        style={{ transition: "stroke-dashoffset 0.6s ease" }}
+      />
+    </svg>
+  );
 }
 
 /* ── Modal ── */
 function Modal({ problem, mode, onClose, initialValue, onSave }) {
   const [value, setValue] = useState(initialValue || "");
-  const textareaRef = useRef(null);
-
+  const ref = useRef(null);
   useEffect(() => {
-    textareaRef.current?.focus();
+    ref.current?.focus();
   }, []);
-
   useEffect(() => {
-    const handler = (e) => {
+    const h = (e) => {
       if (e.key === "Escape") onClose();
     };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
   }, [onClose]);
-
   const isCode = mode === "code";
-  const title = isCode ? "Code" : "Notes";
-  const placeholder = isCode
-    ? "# Paste or type your solution here...\ndef twoSum(nums, target):\n    seen = {}\n    for i, n in enumerate(nums):\n        if target - n in seen:\n            return [seen[target - n], i]\n        seen[n] = i"
-    : "Write your approach, observations, or key insights here...\n\nExample:\n• Brute force: O(n²) — nested loops\n• Optimized: use a hash map for O(n)\n• Edge cases: empty array, duplicates";
-
   return (
     <div
       onClick={(e) => {
@@ -118,7 +164,7 @@ function Modal({ problem, mode, onClose, initialValue, onSave }) {
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.65)",
+        background: "rgba(0,0,0,0.7)",
         zIndex: 1000,
         display: "flex",
         alignItems: "center",
@@ -140,7 +186,6 @@ function Modal({ problem, mode, onClose, initialValue, onSave }) {
           boxShadow: "0 24px 64px rgba(0,0,0,0.6)",
         }}
       >
-        {/* Header */}
         <div
           style={{
             padding: "16px 20px",
@@ -164,32 +209,22 @@ function Modal({ problem, mode, onClose, initialValue, onSave }) {
               alignItems: "center",
               justifyContent: "center",
               fontSize: 15,
-              flexShrink: 0,
             }}
           >
             {isCode ? "⌨" : "📝"}
           </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ flex: 1 }}>
             <div
               style={{
-                fontSize: 13,
-                color: "rgba(255,255,255,0.4)",
-                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 11,
+                color: "rgba(255,255,255,0.35)",
+                fontFamily: "'JetBrains Mono',monospace",
                 marginBottom: 2,
               }}
             >
-              {title}
+              {isCode ? "Code" : "Notes"}
             </div>
-            <div
-              style={{
-                fontSize: 15,
-                fontWeight: 700,
-                color: "#e8e8f0",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#e8e8f0" }}>
               {problem.name}
             </div>
           </div>
@@ -207,61 +242,46 @@ function Modal({ problem, mode, onClose, initialValue, onSave }) {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              flexShrink: 0,
-              lineHeight: 1,
             }}
           >
             ×
           </button>
         </div>
-
-        {/* Textarea */}
-        <div
+        <textarea
+          ref={ref}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder={
+            isCode
+              ? "# Write your solution here..."
+              : "Write your approach, observations, key insights..."
+          }
           style={{
             flex: 1,
-            overflow: "hidden",
-            display: "flex",
-            flexDirection: "column",
+            width: "100%",
+            background: "transparent",
+            border: "none",
+            outline: "none",
+            resize: "none",
+            padding: "16px 20px",
+            fontSize: isCode ? 13 : 14,
+            fontFamily: isCode ? "'JetBrains Mono',monospace" : "inherit",
+            color: "#e8e8f0",
+            lineHeight: 1.7,
+            minHeight: 280,
           }}
-        >
-          <textarea
-            ref={textareaRef}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            placeholder={placeholder}
-            style={{
-              flex: 1,
-              width: "100%",
-              background: "transparent",
-              border: "none",
-              outline: "none",
-              resize: "none",
-              padding: "16px 20px",
-              fontSize: isCode ? 13 : 14,
-              fontFamily: isCode ? "'JetBrains Mono', monospace" : "inherit",
-              color: "#e8e8f0",
-              lineHeight: isCode ? 1.7 : 1.6,
-              minHeight: 280,
-              boxSizing: "border-box",
-              tabSize: 2,
-            }}
-            onKeyDown={(e) => {
-              if (isCode && e.key === "Tab") {
-                e.preventDefault();
-                const start = e.target.selectionStart;
-                const end = e.target.selectionEnd;
-                const newVal =
-                  value.substring(0, start) + "  " + value.substring(end);
-                setValue(newVal);
-                setTimeout(() => {
-                  e.target.selectionStart = e.target.selectionEnd = start + 2;
-                }, 0);
-              }
-            }}
-          />
-        </div>
-
-        {/* Footer */}
+          onKeyDown={(e) => {
+            if (isCode && e.key === "Tab") {
+              e.preventDefault();
+              const s = e.target.selectionStart,
+                en = e.target.selectionEnd;
+              setValue(value.substring(0, s) + "  " + value.substring(en));
+              setTimeout(() => {
+                e.target.selectionStart = e.target.selectionEnd = s + 2;
+              }, 0);
+            }
+          }}
+        />
         <div
           style={{
             padding: "12px 20px",
@@ -276,7 +296,7 @@ function Modal({ problem, mode, onClose, initialValue, onSave }) {
             style={{
               fontSize: 12,
               color: "rgba(255,255,255,0.25)",
-              fontFamily: "'JetBrains Mono', monospace",
+              fontFamily: "'JetBrains Mono',monospace",
             }}
           >
             {value.length} chars{isCode ? " · Tab = 2 spaces" : ""}
@@ -322,254 +342,55 @@ function Modal({ problem, mode, onClose, initialValue, onSave }) {
   );
 }
 
-/* ── Small indicator dot shown when a problem has content saved ── */
-function SavedDot({ color }) {
+/* ── Icon button ── */
+function IconBtn({ title, color, active, onClick, children }) {
+  const [hov, setHov] = useState(false);
   return (
-    <div
-      style={{
-        width: 6,
-        height: 6,
-        borderRadius: "50%",
-        background: color,
-        position: "absolute",
-        top: 3,
-        right: 3,
-        pointerEvents: "none",
-      }}
-    />
-  );
-}
-
-function ProgressRing({
-  value,
-  max,
-  size = 64,
-  stroke = 5,
-  color = "#f1459e",
-}) {
-  const r = (size - stroke * 2) / 2;
-  const circ = 2 * Math.PI * r;
-  const pct = max ? value / max : 0;
-  return (
-    <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={r}
-        fill="none"
-        stroke="#2a2a3a"
-        strokeWidth={stroke}
-      />
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={r}
-        fill="none"
-        stroke={color}
-        strokeWidth={stroke}
-        strokeLinecap="round"
-        strokeDasharray={circ}
-        strokeDashoffset={circ * (1 - pct)}
-        style={{ transition: "stroke-dashoffset 0.6s ease" }}
-      />
-    </svg>
-  );
-}
-
-function HeroStats({ completed, total }) {
-  const pct = total ? Math.round((completed / total) * 100) : 0;
-  const easy = roadmap
-    .flatMap((s) => s.problems)
-    .filter((p) => p.difficulty === "Easy").length;
-  const medium = roadmap
-    .flatMap((s) => s.problems)
-    .filter((p) => p.difficulty === "Medium").length;
-  const hard = roadmap
-    .flatMap((s) => s.problems)
-    .filter((p) => p.difficulty === "Hard").length;
-
-  return (
-    <div
-      style={{
-        padding: "48px 0 36px",
-        textAlign: "center",
-        position: "relative",
-      }}
-    >
-      <div style={{ position: "relative" }}>
-        <div
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            background: "rgba(244,114,182,0.12)",
-            border: "1px solid rgba(244,114,182,0.25)",
-            borderRadius: 100,
-            padding: "4px 14px",
-            marginBottom: 20,
-            fontSize: 12,
-            fontFamily: "'JetBrains Mono', monospace",
-            color: "#fffafd",
-            letterSpacing: 2,
-          }}
-        >
-          ◆ NEETCODE 150
-        </div>
-        <h1
-          style={{
-            fontSize: "clamp(2rem, 5vw, 3.5rem)",
-            fontWeight: 800,
-            background: "#e8e8f0",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-            letterSpacing: "-1px",
-            lineHeight: 1.1,
-            marginBottom: 8,
-          }}
-        >
-          LeetCode Grind June 2026
-        </h1>
-        <p style={{ color: "var(--text2)", fontSize: 15, marginBottom: 36 }}>
-          10-week roadmap · {total} problems · ship it
-        </p>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            gap: 48,
-            flexWrap: "wrap",
-          }}
-        >
-          <div
-            style={{
-              position: "relative",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <ProgressRing value={completed} max={total} size={96} stroke={6} />
-            <div style={{ position: "absolute", textAlign: "center" }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color: "#f93f9f" }}>
-                {pct}%
-              </div>
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 32 }}>
-            {[
-              { label: "Done", val: completed, color: "#f63f9d" },
-              { label: "Left", val: total - completed, color: "var(--text2)" },
-              { label: "Total", val: total, color: "var(--text)" },
-            ].map((s) => (
-              <div key={s.label} style={{ textAlign: "center" }}>
-                <div style={{ fontSize: 28, fontWeight: 800, color: s.color }}>
-                  {s.val}
-                </div>
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: "var(--text3)",
-                    fontFamily: "'JetBrains Mono', monospace",
-                    letterSpacing: 1,
-                  }}
-                >
-                  {s.label}
-                </div>
-              </div>
-            ))}
-          </div>
-          <div style={{ display: "flex", gap: 20 }}>
-            {[
-              { label: "Easy", val: easy, color: "#22c55e" },
-              { label: "Med", val: medium, color: "#f59e0b" },
-              { label: "Hard", val: hard, color: "#ef4444" },
-            ].map((s) => (
-              <div
-                key={s.label}
-                style={{
-                  background: "var(--bg3)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 10,
-                  padding: "10px 16px",
-                  textAlign: "center",
-                }}
-              >
-                <div style={{ fontSize: 18, fontWeight: 700, color: s.color }}>
-                  {s.val}
-                </div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "var(--text3)",
-                    fontFamily: "'JetBrains Mono', monospace",
-                    letterSpacing: 1,
-                  }}
-                >
-                  {s.label}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function FilterBar({ filter, setFilter, sortBy, setSortBy }) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        gap: 8,
-        flexWrap: "wrap",
-        alignItems: "center",
-        padding: "16px 0",
-        borderBottom: "1px solid var(--border)",
-        marginBottom: 24,
-      }}
-    >
-      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", flex: 1 }}>
-        {["All", "Easy", "Medium", "Hard", "Done", "Remaining"].map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            style={{
-              padding: "5px 14px",
-              borderRadius: 100,
-              fontSize: 13,
-              fontWeight: 600,
-              background: filter === f ? "var(--accent)" : "var(--bg3)",
-              color: filter === f ? "#fff" : "var(--text2)",
-              border: `1px solid ${filter === f ? "var(--accent)" : "var(--border)"}`,
-              transition: "all 0.15s",
-            }}
-          >
-            {f}
-          </button>
-        ))}
-      </div>
-      <select
-        value={sortBy}
-        onChange={(e) => setSortBy(e.target.value)}
+    <div style={{ position: "relative", flexShrink: 0 }}>
+      <button
+        title={title}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick();
+        }}
+        onMouseEnter={() => setHov(true)}
+        onMouseLeave={() => setHov(false)}
         style={{
-          background: "var(--bg3)",
-          color: "var(--text2)",
-          border: "1px solid var(--border)",
-          borderRadius: 8,
-          padding: "5px 10px",
+          width: 28,
+          height: 28,
+          borderRadius: 7,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: active || hov ? `${color}18` : "var(--bg4)",
+          border: `1px solid ${active || hov ? `${color}50` : "var(--border)"}`,
+          color: active || hov ? color : "var(--text3)",
           fontSize: 13,
-          fontFamily: "inherit",
+          cursor: "pointer",
+          transition: "all 0.15s",
         }}
       >
-        <option value="roadmap">Roadmap order</option>
-        <option value="difficulty">By difficulty</option>
-      </select>
+        {children}
+      </button>
+      {active && (
+        <div
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: "50%",
+            background: color,
+            position: "absolute",
+            top: 2,
+            right: 2,
+            pointerEvents: "none",
+          }}
+        />
+      )}
     </div>
   );
 }
 
+/* ── Problem row (shared) ── */
 function ProblemRow({
   problem,
   done,
@@ -583,50 +404,6 @@ function ProblemRow({
   const diffColor = { Easy: "#22c55e", Medium: "#f59e0b", Hard: "#ef4444" }[
     problem.difficulty
   ];
-
-  const iconBtn = (label, color, hasSaved, onClick, children) => (
-    <div style={{ position: "relative", flexShrink: 0 }}>
-      <button
-        title={label}
-        onClick={(e) => {
-          e.stopPropagation();
-          onClick();
-        }}
-        style={{
-          width: 28,
-          height: 28,
-          borderRadius: 7,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: hasSaved ? `${color}18` : "var(--bg4)",
-          border: `1px solid ${hasSaved ? `${color}50` : "var(--border)"}`,
-          color: hasSaved ? color : "var(--text3)",
-          fontSize: 13,
-          cursor: "pointer",
-          transition: "all 0.15s",
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = `${color}18`;
-          e.currentTarget.style.borderColor = `${color}50`;
-          e.currentTarget.style.color = color;
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = hasSaved
-            ? `${color}18`
-            : "var(--bg4)";
-          e.currentTarget.style.borderColor = hasSaved
-            ? `${color}50`
-            : "var(--border)";
-          e.currentTarget.style.color = hasSaved ? color : "var(--text3)";
-        }}
-      >
-        {children}
-      </button>
-      {hasSaved && <SavedDot color={color} />}
-    </div>
-  );
-
   return (
     <div
       onClick={onToggle}
@@ -640,7 +417,7 @@ function ProblemRow({
         border: `1px solid ${done ? "rgba(244,114,182,0.2)" : "transparent"}`,
         cursor: "pointer",
         transition: "all 0.15s",
-        opacity: done ? 0.7 : 1,
+        opacity: done ? 0.72 : 1,
       }}
       onMouseEnter={(e) => {
         if (!done) e.currentTarget.style.background = "var(--bg3)";
@@ -675,7 +452,6 @@ function ProblemRow({
           </svg>
         )}
       </div>
-
       <span
         style={{
           flex: 1,
@@ -687,14 +463,12 @@ function ProblemRow({
       >
         {problem.name}
       </span>
-
       {done && completedAt && (
         <span
-          title={new Date(completedAt).toLocaleString()}
           style={{
-            fontSize: 12,
+            fontSize: 11,
             color: "#67e8f9",
-            fontFamily: "'JetBrains Mono', monospace",
+            fontFamily: "'JetBrains Mono',monospace",
             whiteSpace: "nowrap",
             flexShrink: 0,
           }}
@@ -706,14 +480,13 @@ function ProblemRow({
           })}
         </span>
       )}
-
       <span
         style={{
           fontSize: 11,
           fontWeight: 700,
           padding: "2px 8px",
           borderRadius: 100,
-          fontFamily: "'JetBrains Mono', monospace",
+          fontFamily: "'JetBrains Mono',monospace",
           letterSpacing: 0.5,
           background: `${diffColor}18`,
           color: diffColor,
@@ -722,13 +495,12 @@ function ProblemRow({
       >
         {problem.difficulty}
       </span>
-
-      {/* Notes button */}
-      {iconBtn(
-        "Notes",
-        "#f1459e",
-        hasNote,
-        onOpenNote,
+      <IconBtn
+        title="Notes"
+        color="#f1459e"
+        active={hasNote}
+        onClick={onOpenNote}
+      >
         <svg
           width="13"
           height="13"
@@ -743,15 +515,14 @@ function ProblemRow({
           <polyline points="14,2 14,8 20,8" />
           <line x1="16" y1="13" x2="8" y2="13" />
           <line x1="16" y1="17" x2="8" y2="17" />
-        </svg>,
-      )}
-
-      {/* Code button */}
-      {iconBtn(
-        "Code",
-        "#3b82f6",
-        hasCode,
-        onOpenCode,
+        </svg>
+      </IconBtn>
+      <IconBtn
+        title="Code"
+        color="#3b82f6"
+        active={hasCode}
+        onClick={onOpenCode}
+      >
         <svg
           width="13"
           height="13"
@@ -764,10 +535,8 @@ function ProblemRow({
         >
           <polyline points="16,18 22,12 16,6" />
           <polyline points="8,6 2,12 8,18" />
-        </svg>,
-      )}
-
-      {/* LeetCode link */}
+        </svg>
+      </IconBtn>
       <a
         href={problem.leetcodeUrl}
         target="_blank"
@@ -802,6 +571,7 @@ function ProblemRow({
   );
 }
 
+/* ── Main roadmap section card ── */
 function SectionCard({
   section,
   completed,
@@ -817,7 +587,6 @@ function SectionCard({
   const [open, setOpen] = useState(true);
   const doneCount = section.problems.filter((p) => completed[p.id]).length;
   const pct = Math.round((doneCount / section.problems.length) * 100);
-
   let probs = [...section.problems];
   if (filter === "Easy") probs = probs.filter((p) => p.difficulty === "Easy");
   else if (filter === "Medium")
@@ -832,7 +601,6 @@ function SectionCard({
       (a, b) => difficultyOrder[a.difficulty] - difficultyOrder[b.difficulty],
     );
   if (probs.length === 0) return null;
-
   return (
     <div
       style={{
@@ -890,7 +658,7 @@ function SectionCard({
                 background: `${section.tagColor}18`,
                 color: section.tagColor,
                 border: `1px solid ${section.tagColor}30`,
-                fontFamily: "'JetBrains Mono', monospace",
+                fontFamily: "'JetBrains Mono',monospace",
                 letterSpacing: 0.5,
               }}
             >
@@ -900,7 +668,7 @@ function SectionCard({
               style={{
                 fontSize: 11,
                 color: "var(--text3)",
-                fontFamily: "'JetBrains Mono', monospace",
+                fontFamily: "'JetBrains Mono',monospace",
               }}
             >
               Week {section.week} · {section.days}
@@ -932,7 +700,7 @@ function SectionCard({
               style={{
                 fontSize: 10,
                 color: "var(--text3)",
-                fontFamily: "'JetBrains Mono', monospace",
+                fontFamily: "'JetBrains Mono',monospace",
               }}
             >
               {pct}%
@@ -962,7 +730,6 @@ function SectionCard({
           </div>
         </div>
       </div>
-
       <div style={{ height: 2, background: "var(--border)" }}>
         <div
           style={{
@@ -974,7 +741,6 @@ function SectionCard({
           }}
         />
       </div>
-
       {open && (
         <div style={{ padding: "8px 12px 12px" }}>
           <div
@@ -1016,88 +782,759 @@ function SectionCard({
   );
 }
 
-export default function App() {
-  const { completed, dates, toggle, reset } = useProgress();
-  const { notes, code, saveNote, saveCode } = useNotesAndCode();
-  const [filter, setFilter] = useState("All");
-  const [sortBy, setSortBy] = useState("roadmap");
-  const [modal, setModal] = useState(null); // { problem, mode: "note"|"code" }
-  const totalDone = Object.values(completed).filter(Boolean).length;
-
-  const openNote = (problem) => setModal({ problem, mode: "note" });
-  const openCode = (problem) => setModal({ problem, mode: "code" });
-  const closeModal = () => setModal(null);
-
+/* ── Company day card ── */
+function CompanyDayCard({
+  day,
+  company,
+  completed,
+  toggle,
+  notes,
+  code,
+  onOpenNote,
+  onOpenCode,
+}) {
+  const [open, setOpen] = useState(true);
+  const doneCount = day.problems.filter((p) => completed[p.id]).length;
+  const pct = Math.round((doneCount / day.problems.length) * 100);
   return (
-    <div style={{ maxWidth: 860, margin: "0 auto", padding: "0 16px 80px" }}>
-      <HeroStats completed={totalDone} total={totalProblems} />
-
+    <div
+      style={{
+        background: "var(--bg2)",
+        border: `1px solid ${company.color}25`,
+        borderRadius: 16,
+        overflow: "hidden",
+        transition: "border-color 0.2s",
+      }}
+      onMouseEnter={(e) =>
+        (e.currentTarget.style.borderColor = `${company.color}50`)
+      }
+      onMouseLeave={(e) =>
+        (e.currentTarget.style.borderColor = `${company.color}25`)
+      }
+    >
       <div
+        onClick={() => setOpen((o) => !o)}
         style={{
           display: "flex",
-          justifyContent: "space-between",
           alignItems: "center",
-          marginBottom: 4,
+          gap: 12,
+          padding: "16px 20px",
+          cursor: "pointer",
+          borderBottom: open ? "1px solid var(--border)" : "none",
         }}
       >
-        <span
+        <div
           style={{
-            fontSize: 13,
-            color: "var(--text3)",
-            fontFamily: "'JetBrains Mono', monospace",
-          }}
-        >
-          {roadmap.length} sections
-        </span>
-        <button
-          onClick={reset}
-          style={{
-            padding: "5px 14px",
+            width: 32,
+            height: 32,
             borderRadius: 8,
-            fontSize: 12,
-            background: "transparent",
-            color: "var(--text3)",
-            border: "1px solid var(--border)",
-            fontFamily: "'JetBrains Mono', monospace",
-            transition: "all 0.15s",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = "#ef4444";
-            e.currentTarget.style.borderColor = "#ef444440";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = "var(--text3)";
-            e.currentTarget.style.borderColor = "var(--border)";
+            background: `${company.color}15`,
+            border: `1px solid ${company.color}30`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 14,
+            fontWeight: 800,
+            color: company.color,
+            flexShrink: 0,
+            fontFamily: "'JetBrains Mono',monospace",
           }}
         >
-          reset progress
-        </button>
+          {day.label.replace("Day ", "")}
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>{day.label}</div>
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--text3)",
+              fontFamily: "'JetBrains Mono',monospace",
+            }}
+          >
+            {day.theme}
+          </div>
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            flexShrink: 0,
+          }}
+        >
+          <div style={{ textAlign: "right" }}>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 700,
+                color:
+                  doneCount === day.problems.length ? "#22c55e" : "var(--text)",
+              }}
+            >
+              {doneCount}/{day.problems.length}
+            </div>
+            <div
+              style={{
+                fontSize: 10,
+                color: "var(--text3)",
+                fontFamily: "'JetBrains Mono',monospace",
+              }}
+            >
+              {pct}%
+            </div>
+          </div>
+          <ProgressRing
+            value={doneCount}
+            max={day.problems.length}
+            size={36}
+            stroke={3}
+            color={company.color}
+          />
+          <div
+            style={{
+              width: 24,
+              height: 24,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "var(--text3)",
+              fontSize: 16,
+              transition: "transform 0.2s",
+              transform: open ? "rotate(180deg)" : "rotate(0deg)",
+            }}
+          >
+            ⌄
+          </div>
+        </div>
+      </div>
+      <div style={{ height: 2, background: "var(--border)" }}>
+        <div
+          style={{
+            height: "100%",
+            background: company.color,
+            width: `${pct}%`,
+            transition: "width 0.5s ease",
+          }}
+        />
+      </div>
+      {open && (
+        <div style={{ padding: "8px 12px 12px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            {day.problems.map((p) => (
+              <ProblemRow
+                key={p.id}
+                problem={p}
+                done={!!completed[p.id]}
+                completedAt={null}
+                onToggle={() => toggle(p.id)}
+                hasNote={!!notes[p.id]}
+                hasCode={!!code[p.id]}
+                onOpenNote={() => onOpenNote(p)}
+                onOpenCode={() => onOpenCode(p)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Company page ── */
+function CompanyPage({
+  company,
+  completed,
+  toggle,
+  notes,
+  code,
+  onOpenNote,
+  onOpenCode,
+}) {
+  const allProblems = company.days.flatMap((d) => d.problems);
+  const totalDone = allProblems.filter((p) => completed[p.id]).length;
+  const pct = Math.round((totalDone / allProblems.length) * 100);
+  const daysLeft = daysUntil(company.examDate);
+  const urgency =
+    daysLeft <= 1 ? "#ef4444" : daysLeft <= 3 ? "#f59e0b" : company.color;
+
+  return (
+    <div>
+      {/* Company hero */}
+      <div
+        style={{
+          background: `linear-gradient(135deg, ${company.color}12 0%, transparent 60%)`,
+          border: `1px solid ${company.color}30`,
+          borderRadius: 20,
+          padding: "28px 28px 24px",
+          marginBottom: 24,
+          position: "relative",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            top: -30,
+            right: -20,
+            fontSize: 120,
+            opacity: 0.04,
+            userSelect: "none",
+          }}
+        >
+          {company.logo}
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 16,
+            flexWrap: "wrap",
+          }}
+        >
+          <div
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: 14,
+              background: `${company.color}18`,
+              border: `2px solid ${company.color}40`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 26,
+              flexShrink: 0,
+            }}
+          >
+            {company.logo}
+          </div>
+          <div style={{ flex: 1 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                flexWrap: "wrap",
+                marginBottom: 4,
+              }}
+            >
+              <h2
+                style={{ fontSize: 24, fontWeight: 800, color: "var(--text)" }}
+              >
+                {company.name} Assessment
+              </h2>
+              <span
+                style={{
+                  fontSize: 11,
+                  padding: "3px 10px",
+                  borderRadius: 100,
+                  background: `${urgency}18`,
+                  color: urgency,
+                  border: `1px solid ${urgency}30`,
+                  fontFamily: "'JetBrains Mono',monospace",
+                  fontWeight: 700,
+                }}
+              >
+                {daysLeft === 0
+                  ? "TODAY 🔥"
+                  : daysLeft === 1
+                    ? "TOMORROW ⚡"
+                    : daysLeft < 0
+                      ? "PAST"
+                      : `${daysLeft} days left`}
+              </span>
+            </div>
+            <div
+              style={{
+                fontSize: 13,
+                color: "var(--text3)",
+                fontFamily: "'JetBrains Mono',monospace",
+              }}
+            >
+              Exam:{" "}
+              {new Date(company.examDate).toLocaleDateString("en-IN", {
+                weekday: "short",
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+              })}
+            </div>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              flexShrink: 0,
+            }}
+          >
+            <div style={{ textAlign: "right" }}>
+              <div
+                style={{ fontSize: 26, fontWeight: 800, color: company.color }}
+              >
+                {pct}%
+              </div>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "var(--text3)",
+                  fontFamily: "'JetBrains Mono',monospace",
+                }}
+              >
+                {totalDone}/{allProblems.length} done
+              </div>
+            </div>
+            <ProgressRing
+              value={totalDone}
+              max={allProblems.length}
+              size={56}
+              stroke={5}
+              color={company.color}
+            />
+          </div>
+        </div>
+        {/* overall progress bar */}
+        <div
+          style={{
+            marginTop: 20,
+            height: 4,
+            background: "var(--border)",
+            borderRadius: 2,
+          }}
+        >
+          <div
+            style={{
+              height: "100%",
+              background: company.color,
+              width: `${pct}%`,
+              borderRadius: 2,
+              transition: "width 0.5s ease",
+            }}
+          />
+        </div>
       </div>
 
-      <FilterBar
-        filter={filter}
-        setFilter={setFilter}
-        sortBy={sortBy}
-        setSortBy={setSortBy}
-      />
-
+      {/* Day cards */}
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {roadmap.map((section) => (
-          <SectionCard
-            key={section.id}
-            section={section}
+        {company.days.map((day) => (
+          <CompanyDayCard
+            key={day.id}
+            day={day}
+            company={company}
             completed={completed}
-            dates={dates}
             toggle={toggle}
-            filter={filter}
-            sortBy={sortBy}
             notes={notes}
             code={code}
-            onOpenNote={openNote}
-            onOpenCode={openCode}
+            onOpenNote={onOpenNote}
+            onOpenCode={onOpenCode}
           />
         ))}
       </div>
+    </div>
+  );
+}
+
+/* ── Hero stats (roadmap tab) ── */
+function HeroStats({ completed, total }) {
+  const pct = total ? Math.round((completed / total) * 100) : 0;
+  const easy = roadmap
+    .flatMap((s) => s.problems)
+    .filter((p) => p.difficulty === "Easy").length;
+  const medium = roadmap
+    .flatMap((s) => s.problems)
+    .filter((p) => p.difficulty === "Medium").length;
+  const hard = roadmap
+    .flatMap((s) => s.problems)
+    .filter((p) => p.difficulty === "Hard").length;
+  return (
+    <div
+      style={{
+        padding: "48px 0 36px",
+        textAlign: "center",
+        position: "relative",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+
+          pointerEvents: "none",
+        }}
+      />
+      <div style={{ position: "relative" }}>
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+
+            border: "1px solid rgba(244,114,182,0.25)",
+            borderRadius: 100,
+            padding: "4px 14px",
+            marginBottom: 20,
+            fontSize: 12,
+            fontFamily: "inherit",
+            color: "#f9a8d4",
+            letterSpacing: 2,
+          }}
+        >
+          ◆ NEETCODE 150
+        </div>
+        <h1
+          style={{
+            fontSize: "clamp(2rem,5vw,3.5rem)",
+            fontWeight: 800,
+            background: "#fff",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            letterSpacing: "-1px",
+            lineHeight: 1.1,
+            marginBottom: 8,
+          }}
+        >
+          LeetCode Grind
+        </h1>
+        <p style={{ color: "var(--text2)", fontSize: 15, marginBottom: 36 }}>
+          10-week roadmap · {total} problems · ship it
+        </p>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            gap: 48,
+            flexWrap: "wrap",
+          }}
+        >
+          <div
+            style={{
+              position: "relative",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <ProgressRing value={completed} max={total} size={96} stroke={6} />
+            <div style={{ position: "absolute" }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: "#f472b6" }}>
+                {pct}%
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 32 }}>
+            {[
+              { label: "Done", val: completed, color: "#f472b6" },
+              { label: "Left", val: total - completed, color: "var(--text2)" },
+              { label: "Total", val: total, color: "var(--text)" },
+            ].map((s) => (
+              <div key={s.label} style={{ textAlign: "center" }}>
+                <div style={{ fontSize: 28, fontWeight: 800, color: s.color }}>
+                  {s.val}
+                </div>
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "var(--text3)",
+                    fontFamily: "'JetBrains Mono',monospace",
+                    letterSpacing: 1,
+                  }}
+                >
+                  {s.label}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 20 }}>
+            {[
+              { label: "Easy", val: easy, color: "#22c55e" },
+              { label: "Med", val: medium, color: "#f59e0b" },
+              { label: "Hard", val: hard, color: "#ef4444" },
+            ].map((s) => (
+              <div
+                key={s.label}
+                style={{
+                  background: "var(--bg3)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 10,
+                  padding: "10px 16px",
+                  textAlign: "center",
+                }}
+              >
+                <div style={{ fontSize: 18, fontWeight: 700, color: s.color }}>
+                  {s.val}
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "var(--text3)",
+                    fontFamily: "'JetBrains Mono',monospace",
+                    letterSpacing: 1,
+                  }}
+                >
+                  {s.label}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Tab bar ── */
+function TabBar({ activeTab, setActiveTab }) {
+  const tabs = [
+    { id: "roadmap", label: "Roadmap", icon: "🗺️" },
+    ...companies.map((c) => ({
+      id: `company-${c.id}`,
+      label: c.name,
+      icon: c.logo,
+      color: c.color,
+      examDate: c.examDate,
+    })),
+  ];
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 4,
+        marginBottom: 32,
+        borderBottom: "1px solid var(--border)",
+        paddingBottom: 0,
+      }}
+    >
+      {tabs.map((t) => {
+        const isActive = activeTab === t.id;
+        const daysLeft = t.examDate ? daysUntil(t.examDate) : null;
+        const urgent = daysLeft !== null && daysLeft <= 3;
+        return (
+          <button
+            key={t.id}
+            onClick={() => setActiveTab(t.id)}
+            style={{
+              padding: "10px 18px",
+              borderRadius: "10px 10px 0 0",
+              fontSize: 14,
+              fontWeight: isActive ? 700 : 500,
+              background: isActive ? "var(--bg2)" : "transparent",
+              color: isActive ? t.color || "var(--accent)" : "var(--text3)",
+              border: isActive
+                ? `1px solid var(--border)`
+                : "1px solid transparent",
+              borderBottom: isActive
+                ? "1px solid var(--bg2)"
+                : "1px solid transparent",
+              marginBottom: isActive ? "-1px" : 0,
+              display: "flex",
+              alignItems: "center",
+              gap: 7,
+              transition: "all 0.15s",
+              position: "relative",
+            }}
+          >
+            <span>{t.icon}</span>
+            <span>{t.label}</span>
+            {urgent && daysLeft >= 0 && (
+              <span
+                style={{
+                  fontSize: 10,
+                  padding: "1px 6px",
+                  borderRadius: 100,
+                  background: "rgba(239,68,68,0.15)",
+                  color: "#ef4444",
+                  fontFamily: "'JetBrains Mono',monospace",
+                  fontWeight: 700,
+                }}
+              >
+                {daysLeft === 0 ? "TODAY" : `${daysLeft}d`}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── Root ── */
+export default function App() {
+  const { completed, dates, toggle, reset } = useProgress();
+  const { completed: compCompleted, toggle: compToggle } = useCompanyProgress();
+  const { notes, code, saveNote, saveCode } = useNotesAndCode();
+  const [activeTab, setActiveTab] = useState("roadmap");
+  const [filter, setFilter] = useState("All");
+  const [sortBy, setSortBy] = useState("roadmap");
+  const [modal, setModal] = useState(null);
+
+  const totalDone = Object.values(completed).filter(Boolean).length;
+  const openNote = (p) => setModal({ problem: p, mode: "note" });
+  const openCode = (p) => setModal({ problem: p, mode: "code" });
+  const closeModal = () => setModal(null);
+
+  const isCompanyTab = activeTab.startsWith("company-");
+  const activeCompany = isCompanyTab
+    ? companies.find((c) => `company-${c.id}` === activeTab)
+    : null;
+
+  return (
+    <div style={{ maxWidth: 900, margin: "0 auto", padding: "0 16px 80px" }}>
+      {/* Header — always shown */}
+      {!isCompanyTab && (
+        <HeroStats completed={totalDone} total={totalProblems} />
+      )}
+
+      {isCompanyTab && (
+        <div style={{ padding: "32px 0 24px", textAlign: "center" }}>
+          <h1
+            style={{
+              fontSize: "clamp(1.6rem,4vw,2.8rem)",
+              fontWeight: 800,
+              color: "var(--text)",
+              letterSpacing: "-0.5px",
+              marginBottom: 4,
+            }}
+          >
+            Company Prep
+          </h1>
+          <p style={{ color: "var(--text2)", fontSize: 14 }}>
+            Targeted problem sets for upcoming assessments
+          </p>
+        </div>
+      )}
+
+      {/* Tab bar */}
+      <TabBar activeTab={activeTab} setActiveTab={setActiveTab} />
+
+      {/* Roadmap tab */}
+      {!isCompanyTab && (
+        <>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 4,
+            }}
+          >
+            <span
+              style={{
+                fontSize: 13,
+                color: "var(--text3)",
+                fontFamily: "'JetBrains Mono',monospace",
+              }}
+            >
+              {roadmap.length} sections
+            </span>
+            <button
+              onClick={reset}
+              style={{
+                padding: "5px 14px",
+                borderRadius: 8,
+                fontSize: 12,
+                background: "transparent",
+                color: "var(--text3)",
+                border: "1px solid var(--border)",
+                fontFamily: "'JetBrains Mono',monospace",
+                transition: "all 0.15s",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = "#ef4444";
+                e.currentTarget.style.borderColor = "#ef444440";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = "var(--text3)";
+                e.currentTarget.style.borderColor = "var(--border)";
+              }}
+            >
+              reset progress
+            </button>
+          </div>
+
+          {/* Filter bar */}
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+              alignItems: "center",
+              padding: "16px 0",
+              borderBottom: "1px solid var(--border)",
+              marginBottom: 24,
+            }}
+          >
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", flex: 1 }}>
+              {["All", "Easy", "Medium", "Hard", "Done", "Remaining"].map(
+                (f) => (
+                  <button
+                    key={f}
+                    onClick={() => setFilter(f)}
+                    style={{
+                      padding: "5px 14px",
+                      borderRadius: 100,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      background: filter === f ? "var(--accent)" : "var(--bg3)",
+                      color: filter === f ? "#fff" : "var(--text2)",
+                      border: `1px solid ${filter === f ? "var(--accent)" : "var(--border)"}`,
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    {f}
+                  </button>
+                ),
+              )}
+            </div>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              style={{
+                background: "var(--bg3)",
+                color: "var(--text2)",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                padding: "5px 10px",
+                fontSize: 13,
+                fontFamily: "inherit",
+              }}
+            >
+              <option value="roadmap">Roadmap order</option>
+              <option value="difficulty">By difficulty</option>
+            </select>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {roadmap.map((section) => (
+              <SectionCard
+                key={section.id}
+                section={section}
+                completed={completed}
+                dates={dates}
+                toggle={toggle}
+                filter={filter}
+                sortBy={sortBy}
+                notes={notes}
+                code={code}
+                onOpenNote={openNote}
+                onOpenCode={openCode}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Company tab */}
+      {isCompanyTab && activeCompany && (
+        <CompanyPage
+          company={activeCompany}
+          completed={compCompleted}
+          toggle={compToggle}
+          notes={notes}
+          code={code}
+          onOpenNote={openNote}
+          onOpenCode={openCode}
+        />
+      )}
 
       <div
         style={{
@@ -1105,7 +1542,7 @@ export default function App() {
           marginTop: 48,
           color: "var(--text3)",
           fontSize: 13,
-          fontFamily: "'JetBrains Mono', monospace",
+          fontFamily: "'JetBrains Mono',monospace",
         }}
       >
         progress saved locally · built for the grind 🔥
