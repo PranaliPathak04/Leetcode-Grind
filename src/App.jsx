@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { roadmap, totalProblems, companies } from "./data";
+import { csSubjects, totalCsQuestions } from "./csData";
 import "./index.css";
 
 const STORAGE_KEY = "lc_grind_v1";
@@ -7,6 +8,7 @@ const NOTES_KEY = "lc_notes_v1";
 const CODE_KEY = "lc_code_v1";
 const DATES_KEY = "lc_dates_v1";
 const COMPANY_KEY = "lc_company_v1";
+const CS_KEY = "lc_cs_v1";
 const difficultyOrder = { Easy: 0, Medium: 1, Hard: 2 };
 
 /* ── hooks ── */
@@ -51,19 +53,20 @@ function useProgress() {
   return { completed, dates, toggle, reset };
 }
 
-function useCompanyProgress() {
+function useSimpleProgress(key) {
   const [completed, setCompleted] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem(COMPANY_KEY)) || {};
+      return JSON.parse(localStorage.getItem(key)) || {};
     } catch {
       return {};
     }
   });
   useEffect(() => {
-    localStorage.setItem(COMPANY_KEY, JSON.stringify(completed));
-  }, [completed]);
+    localStorage.setItem(key, JSON.stringify(completed));
+  }, [completed, key]);
   const toggle = (id) => setCompleted((p) => ({ ...p, [id]: !p[id] }));
-  return { completed, toggle };
+  const reset = () => setCompleted({});
+  return { completed, toggle, reset };
 }
 
 function useNotesAndCode() {
@@ -390,7 +393,7 @@ function IconBtn({ title, color, active, onClick, children }) {
   );
 }
 
-/* ── Problem row (shared) ── */
+/* ── Problem row (leetcode-style, shared) ── */
 function ProblemRow({
   problem,
   done,
@@ -567,6 +570,73 @@ function ProblemRow({
       >
         ↗
       </a>
+    </div>
+  );
+}
+
+/* ── Question row (CS fundamentals — simpler, no leetcode link) ── */
+function QuestionRow({ question, done, onToggle }) {
+  return (
+    <div
+      onClick={onToggle}
+      style={{
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 10,
+        padding: "10px 14px",
+        borderRadius: 10,
+        background: done ? "rgba(244,114,182,0.06)" : "transparent",
+        border: `1px solid ${done ? "rgba(244,114,182,0.2)" : "transparent"}`,
+        cursor: "pointer",
+        transition: "all 0.15s",
+        opacity: done ? 0.65 : 1,
+      }}
+      onMouseEnter={(e) => {
+        if (!done) e.currentTarget.style.background = "var(--bg3)";
+      }}
+      onMouseLeave={(e) => {
+        if (!done) e.currentTarget.style.background = "transparent";
+      }}
+    >
+      <div
+        style={{
+          width: 20,
+          height: 20,
+          borderRadius: 6,
+          flexShrink: 0,
+          marginTop: 1,
+          background: done ? "var(--accent)" : "transparent",
+          border: `2px solid ${done ? "var(--accent)" : "var(--border2)"}`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          transition: "all 0.15s",
+        }}
+      >
+        {done && (
+          <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+            <path
+              d="M1 4L3.5 6.5L9 1"
+              stroke="white"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        )}
+      </div>
+      <span
+        style={{
+          flex: 1,
+          fontSize: 14,
+          fontWeight: 500,
+          color: done ? "var(--text3)" : "var(--text)",
+          textDecoration: done ? "line-through" : "none",
+          lineHeight: 1.5,
+        }}
+      >
+        {question.text}
+      </span>
     </div>
   );
 }
@@ -959,7 +1029,6 @@ function CompanyPage({
 
   return (
     <div>
-      {/* Company hero */}
       <div
         style={{
           background: `linear-gradient(135deg, ${company.color}12 0%, transparent 60%)`,
@@ -1092,7 +1161,6 @@ function CompanyPage({
             />
           </div>
         </div>
-        {/* overall progress bar */}
         <div
           style={{
             marginTop: 20,
@@ -1112,8 +1180,6 @@ function CompanyPage({
           />
         </div>
       </div>
-
-      {/* Day cards */}
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {company.days.map((day) => (
           <CompanyDayCard
@@ -1126,6 +1192,274 @@ function CompanyPage({
             code={code}
             onOpenNote={onOpenNote}
             onOpenCode={onOpenCode}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── CS Fundamentals: section card ── */
+function CsSectionCard({ section, color, completed, toggle }) {
+  const [open, setOpen] = useState(true);
+  const doneCount = section.questions.filter((q) => completed[q.id]).length;
+  const pct = Math.round((doneCount / section.questions.length) * 100);
+  return (
+    <div
+      style={{
+        background: "var(--bg2)",
+        border: "1px solid var(--border)",
+        borderRadius: 16,
+        overflow: "hidden",
+        transition: "border-color 0.2s",
+      }}
+      onMouseEnter={(e) =>
+        (e.currentTarget.style.borderColor = "var(--border2)")
+      }
+      onMouseLeave={(e) =>
+        (e.currentTarget.style.borderColor = "var(--border)")
+      }
+    >
+      <div
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          padding: "16px 20px",
+          cursor: "pointer",
+          borderBottom: open ? "1px solid var(--border)" : "none",
+        }}
+      >
+        <div
+          style={{
+            width: 10,
+            height: 10,
+            borderRadius: "50%",
+            background: color,
+            flexShrink: 0,
+          }}
+        />
+        <div style={{ flex: 1, fontWeight: 700, fontSize: 15 }}>
+          {section.title}
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            flexShrink: 0,
+          }}
+        >
+          <div style={{ textAlign: "right" }}>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 700,
+                color:
+                  doneCount === section.questions.length
+                    ? "#22c55e"
+                    : "var(--text)",
+              }}
+            >
+              {doneCount}/{section.questions.length}
+            </div>
+            <div
+              style={{
+                fontSize: 10,
+                color: "var(--text3)",
+                fontFamily: "'JetBrains Mono',monospace",
+              }}
+            >
+              {pct}%
+            </div>
+          </div>
+          <ProgressRing
+            value={doneCount}
+            max={section.questions.length}
+            size={32}
+            stroke={3}
+            color={color}
+          />
+          <div
+            style={{
+              width: 24,
+              height: 24,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "var(--text3)",
+              fontSize: 16,
+              transition: "transform 0.2s",
+              transform: open ? "rotate(180deg)" : "rotate(0deg)",
+            }}
+          >
+            ⌄
+          </div>
+        </div>
+      </div>
+      <div style={{ height: 2, background: "var(--border)" }}>
+        <div
+          style={{
+            height: "100%",
+            background: color,
+            width: `${pct}%`,
+            transition: "width 0.5s ease",
+          }}
+        />
+      </div>
+      {open && (
+        <div style={{ padding: "8px 12px 12px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            {section.questions.map((q) => (
+              <QuestionRow
+                key={q.id}
+                question={q}
+                done={!!completed[q.id]}
+                onToggle={() => toggle(q.id)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── CS Fundamentals page ── */
+function CsPage({ subjects, completed, toggle }) {
+  const [activeSubject, setActiveSubject] = useState(subjects[0].id);
+  const subject = subjects.find((s) => s.id === activeSubject);
+  const allQ = subject.sections.flatMap((s) => s.questions);
+  const doneCount = allQ.filter((q) => completed[q.id]).length;
+  const pct = Math.round((doneCount / allQ.length) * 100);
+
+  return (
+    <div>
+      {/* Subject pills */}
+      <div
+        style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20 }}
+      >
+        {subjects.map((s) => {
+          const sQ = s.sections.flatMap((sec) => sec.questions);
+          const sDone = sQ.filter((q) => completed[q.id]).length;
+          const isActive = activeSubject === s.id;
+          return (
+            <button
+              key={s.id}
+              onClick={() => setActiveSubject(s.id)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 16px",
+                borderRadius: 100,
+                background: isActive ? `${s.color}18` : "var(--bg3)",
+                border: `1px solid ${isActive ? `${s.color}50` : "var(--border)"}`,
+                color: isActive ? s.color : "var(--text2)",
+                fontSize: 13,
+                fontWeight: 600,
+                transition: "all 0.15s",
+              }}
+            >
+              <span>{s.icon}</span>
+              <span>{s.name}</span>
+              <span
+                style={{
+                  fontSize: 11,
+                  opacity: 0.7,
+                  fontFamily: "'JetBrains Mono',monospace",
+                }}
+              >
+                {sDone}/{sQ.length}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Subject hero */}
+      <div
+        style={{
+          background: `linear-gradient(135deg, ${subject.color}12 0%, transparent 60%)`,
+          border: `1px solid ${subject.color}30`,
+          borderRadius: 20,
+          padding: "24px 28px",
+          marginBottom: 24,
+          display: "flex",
+          alignItems: "center",
+          gap: 16,
+          flexWrap: "wrap",
+        }}
+      >
+        <div
+          style={{
+            width: 48,
+            height: 48,
+            borderRadius: 12,
+            background: `${subject.color}18`,
+            border: `2px solid ${subject.color}40`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 22,
+            flexShrink: 0,
+          }}
+        >
+          {subject.icon}
+        </div>
+        <div style={{ flex: 1 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 800, color: "var(--text)" }}>
+            {subject.name}
+          </h2>
+          <a
+            href={subject.sourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              fontSize: 12,
+              color: "var(--text3)",
+              fontFamily: "'JetBrains Mono',monospace",
+            }}
+          >
+            source: GeeksforGeeks ↗
+          </a>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ textAlign: "right" }}>
+            <div
+              style={{ fontSize: 22, fontWeight: 800, color: subject.color }}
+            >
+              {pct}%
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                color: "var(--text3)",
+                fontFamily: "'JetBrains Mono',monospace",
+              }}
+            >
+              {doneCount}/{allQ.length}
+            </div>
+          </div>
+          <ProgressRing
+            value={doneCount}
+            max={allQ.length}
+            size={48}
+            stroke={4}
+            color={subject.color}
+          />
+        </div>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {subject.sections.map((sec) => (
+          <CsSectionCard
+            key={sec.id}
+            section={sec}
+            color={subject.color}
+            completed={completed}
+            toggle={toggle}
           />
         ))}
       </div>
@@ -1173,7 +1507,7 @@ function HeroStats({ completed, total }) {
             padding: "4px 14px",
             marginBottom: 20,
             fontSize: 12,
-            fontFamily: "inherit",
+
             color: "#f9a8d4",
             letterSpacing: 2,
           }}
@@ -1184,7 +1518,7 @@ function HeroStats({ completed, total }) {
           style={{
             fontSize: "clamp(2rem,5vw,3.5rem)",
             fontWeight: 800,
-            background: "#fff",
+            background: "#e8e8f0 30%",
             WebkitBackgroundClip: "text",
             WebkitTextFillColor: "transparent",
             letterSpacing: "-1px",
@@ -1286,6 +1620,7 @@ function HeroStats({ completed, total }) {
 function TabBar({ activeTab, setActiveTab }) {
   const tabs = [
     { id: "roadmap", label: "Roadmap", icon: "🗺️" },
+    { id: "cs", label: "CS Fundamentals", icon: "📚" },
     ...companies.map((c) => ({
       id: `company-${c.id}`,
       label: c.name,
@@ -1301,7 +1636,7 @@ function TabBar({ activeTab, setActiveTab }) {
         gap: 4,
         marginBottom: 32,
         borderBottom: "1px solid var(--border)",
-        paddingBottom: 0,
+        flexWrap: "wrap",
       }}
     >
       {tabs.map((t) => {
@@ -1360,7 +1695,10 @@ function TabBar({ activeTab, setActiveTab }) {
 /* ── Root ── */
 export default function App() {
   const { completed, dates, toggle, reset } = useProgress();
-  const { completed: compCompleted, toggle: compToggle } = useCompanyProgress();
+  const { completed: compCompleted, toggle: compToggle } =
+    useSimpleProgress(COMPANY_KEY);
+  const { completed: csCompleted, toggle: csToggle } =
+    useSimpleProgress(CS_KEY);
   const { notes, code, saveNote, saveCode } = useNotesAndCode();
   const [activeTab, setActiveTab] = useState("roadmap");
   const [filter, setFilter] = useState("All");
@@ -1373,14 +1711,14 @@ export default function App() {
   const closeModal = () => setModal(null);
 
   const isCompanyTab = activeTab.startsWith("company-");
+  const isCsTab = activeTab === "cs";
   const activeCompany = isCompanyTab
     ? companies.find((c) => `company-${c.id}` === activeTab)
     : null;
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "0 16px 80px" }}>
-      {/* Header — always shown */}
-      {!isCompanyTab && (
+      {activeTab === "roadmap" && (
         <HeroStats completed={totalDone} total={totalProblems} />
       )}
 
@@ -1403,11 +1741,29 @@ export default function App() {
         </div>
       )}
 
-      {/* Tab bar */}
+      {isCsTab && (
+        <div style={{ padding: "32px 0 24px", textAlign: "center" }}>
+          <h1
+            style={{
+              fontSize: "clamp(1.6rem,4vw,2.8rem)",
+              fontWeight: 800,
+              color: "var(--text)",
+              letterSpacing: "-0.5px",
+              marginBottom: 4,
+            }}
+          >
+            CS Fundamentals
+          </h1>
+          <p style={{ color: "var(--text2)", fontSize: 14 }}>
+            OOPs · OS · DBMS · CN — {totalCsQuestions} interview questions
+          </p>
+        </div>
+      )}
+
       <TabBar activeTab={activeTab} setActiveTab={setActiveTab} />
 
       {/* Roadmap tab */}
-      {!isCompanyTab && (
+      {activeTab === "roadmap" && (
         <>
           <div
             style={{
@@ -1451,7 +1807,6 @@ export default function App() {
             </button>
           </div>
 
-          {/* Filter bar */}
           <div
             style={{
               display: "flex",
@@ -1533,6 +1888,15 @@ export default function App() {
           code={code}
           onOpenNote={openNote}
           onOpenCode={openCode}
+        />
+      )}
+
+      {/* CS Fundamentals tab */}
+      {isCsTab && (
+        <CsPage
+          subjects={csSubjects}
+          completed={csCompleted}
+          toggle={csToggle}
         />
       )}
 
