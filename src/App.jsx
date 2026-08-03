@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { roadmap, totalProblems, companies } from "./data";
 import { csSubjects, totalCsQuestions } from "./csData";
+import { patternCategories, totalPatternProblems } from "./patternsData";
 import "./index.css";
 
 const STORAGE_KEY = "lc_grind_v1";
@@ -9,6 +10,7 @@ const CODE_KEY = "lc_code_v1";
 const DATES_KEY = "lc_dates_v1";
 const COMPANY_KEY = "lc_company_v1";
 const CS_KEY = "lc_cs_v1";
+const PATTERN_KEY = "lc_pattern_v1";
 const difficultyOrder = { Easy: 0, Medium: 1, Hard: 2 };
 
 /* ── hooks ── */
@@ -1467,6 +1469,298 @@ function CsPage({ subjects, completed, toggle }) {
   );
 }
 
+/* ── Pattern sheet: section card (reuses ProblemRow) ── */
+function PatternSectionCard({
+  section,
+  color,
+  completed,
+  dates,
+  toggle,
+  notes,
+  code,
+  onOpenNote,
+  onOpenCode,
+}) {
+  const [open, setOpen] = useState(true);
+  const doneCount = section.problems.filter((p) => completed[p.id]).length;
+  const pct = Math.round((doneCount / section.problems.length) * 100);
+  return (
+    <div
+      style={{
+        background: "var(--bg2)",
+        border: "1px solid var(--border)",
+        borderRadius: 16,
+        overflow: "hidden",
+        transition: "border-color 0.2s",
+      }}
+      onMouseEnter={(e) =>
+        (e.currentTarget.style.borderColor = "var(--border2)")
+      }
+      onMouseLeave={(e) =>
+        (e.currentTarget.style.borderColor = "var(--border)")
+      }
+    >
+      <div
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          padding: "16px 20px",
+          cursor: "pointer",
+          borderBottom: open ? "1px solid var(--border)" : "none",
+        }}
+      >
+        <div
+          style={{
+            width: 10,
+            height: 10,
+            borderRadius: "50%",
+            background: color,
+            flexShrink: 0,
+          }}
+        />
+        <div style={{ flex: 1, fontWeight: 700, fontSize: 15 }}>
+          {section.title}
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            flexShrink: 0,
+          }}
+        >
+          <div style={{ textAlign: "right" }}>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 700,
+                color:
+                  doneCount === section.problems.length
+                    ? "#22c55e"
+                    : "var(--text)",
+              }}
+            >
+              {doneCount}/{section.problems.length}
+            </div>
+            <div
+              style={{
+                fontSize: 10,
+                color: "var(--text3)",
+                fontFamily: "'JetBrains Mono',monospace",
+              }}
+            >
+              {pct}%
+            </div>
+          </div>
+          <ProgressRing
+            value={doneCount}
+            max={section.problems.length}
+            size={32}
+            stroke={3}
+            color={color}
+          />
+          <div
+            style={{
+              width: 24,
+              height: 24,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "var(--text3)",
+              fontSize: 16,
+              transition: "transform 0.2s",
+              transform: open ? "rotate(180deg)" : "rotate(0deg)",
+            }}
+          >
+            ⌄
+          </div>
+        </div>
+      </div>
+      <div style={{ height: 2, background: "var(--border)" }}>
+        <div
+          style={{
+            height: "100%",
+            background: color,
+            width: `${pct}%`,
+            transition: "width 0.5s ease",
+          }}
+        />
+      </div>
+      {open && (
+        <div style={{ padding: "8px 12px 12px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            {section.problems.map((p) => (
+              <ProblemRow
+                key={p.id}
+                problem={p}
+                done={!!completed[p.id]}
+                completedAt={dates?.[p.id]}
+                onToggle={() => toggle(p.id)}
+                hasNote={!!notes[p.id]}
+                hasCode={!!code[p.id]}
+                onOpenNote={() => onOpenNote(p)}
+                onOpenCode={() => onOpenCode(p)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Pattern sheet page ── */
+function PatternPage({
+  categories,
+  completed,
+  toggle,
+  notes,
+  code,
+  onOpenNote,
+  onOpenCode,
+}) {
+  const [activeCat, setActiveCat] = useState(categories[0].id);
+  const category = categories.find((c) => c.id === activeCat);
+  const allP = category.sections.flatMap((s) => s.problems);
+  const doneCount = allP.filter((p) => completed[p.id]).length;
+  const pct = Math.round((doneCount / allP.length) * 100);
+
+  return (
+    <div>
+      {/* Category pills */}
+      <div
+        style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20 }}
+      >
+        {categories.map((c) => {
+          const cP = c.sections.flatMap((sec) => sec.problems);
+          const cDone = cP.filter((p) => completed[p.id]).length;
+          const isActive = activeCat === c.id;
+          return (
+            <button
+              key={c.id}
+              onClick={() => setActiveCat(c.id)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 16px",
+                borderRadius: 100,
+                background: isActive ? `${c.color}18` : "var(--bg3)",
+                border: `1px solid ${isActive ? `${c.color}50` : "var(--border)"}`,
+                color: isActive ? c.color : "var(--text2)",
+                fontSize: 13,
+                fontWeight: 600,
+                transition: "all 0.15s",
+              }}
+            >
+              <span>{c.icon}</span>
+              <span>{c.name}</span>
+              <span
+                style={{
+                  fontSize: 11,
+                  opacity: 0.7,
+                  fontFamily: "'JetBrains Mono',monospace",
+                }}
+              >
+                {cDone}/{cP.length}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Category hero */}
+      <div
+        style={{
+          background: `linear-gradient(135deg, ${category.color}12 0%, transparent 60%)`,
+          border: `1px solid ${category.color}30`,
+          borderRadius: 20,
+          padding: "24px 28px",
+          marginBottom: 24,
+          display: "flex",
+          alignItems: "center",
+          gap: 16,
+          flexWrap: "wrap",
+        }}
+      >
+        <div
+          style={{
+            width: 48,
+            height: 48,
+            borderRadius: 12,
+            background: `${category.color}18`,
+            border: `2px solid ${category.color}40`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 22,
+            flexShrink: 0,
+          }}
+        >
+          {category.icon}
+        </div>
+        <div style={{ flex: 1 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 800, color: "var(--text)" }}>
+            {category.name}
+          </h2>
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--text3)",
+              fontFamily: "'JetBrains Mono',monospace",
+            }}
+          >
+            {category.sections.length} sections
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ textAlign: "right" }}>
+            <div
+              style={{ fontSize: 22, fontWeight: 800, color: category.color }}
+            >
+              {pct}%
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                color: "var(--text3)",
+                fontFamily: "'JetBrains Mono',monospace",
+              }}
+            >
+              {doneCount}/{allP.length}
+            </div>
+          </div>
+          <ProgressRing
+            value={doneCount}
+            max={allP.length}
+            size={48}
+            stroke={4}
+            color={category.color}
+          />
+        </div>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {category.sections.map((sec) => (
+          <PatternSectionCard
+            key={sec.id}
+            section={sec}
+            color={category.color}
+            completed={completed}
+            toggle={toggle}
+            notes={notes}
+            code={code}
+            onOpenNote={onOpenNote}
+            onOpenCode={onOpenCode}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ── Hero stats (roadmap tab) ── */
 function HeroStats({ completed, total }) {
   const pct = total ? Math.round((completed / total) * 100) : 0;
@@ -1518,7 +1812,7 @@ function HeroStats({ completed, total }) {
           style={{
             fontSize: "clamp(2rem,5vw,3.5rem)",
             fontWeight: 800,
-            background: "#e8e8f0 30%",
+            background: " #e8e8f0 ",
             WebkitBackgroundClip: "text",
             WebkitTextFillColor: "transparent",
             letterSpacing: "-1px",
@@ -1620,6 +1914,7 @@ function HeroStats({ completed, total }) {
 function TabBar({ activeTab, setActiveTab }) {
   const tabs = [
     { id: "roadmap", label: "Roadmap", icon: "🗺️" },
+    { id: "patterns", label: "Patterns", icon: "🧠" },
     { id: "cs", label: "CS Fundamentals", icon: "📚" },
     ...companies.map((c) => ({
       id: `company-${c.id}`,
@@ -1699,6 +1994,8 @@ export default function App() {
     useSimpleProgress(COMPANY_KEY);
   const { completed: csCompleted, toggle: csToggle } =
     useSimpleProgress(CS_KEY);
+  const { completed: patternCompleted, toggle: patternToggle } =
+    useSimpleProgress(PATTERN_KEY);
   const { notes, code, saveNote, saveCode } = useNotesAndCode();
   const [activeTab, setActiveTab] = useState("roadmap");
   const [filter, setFilter] = useState("All");
@@ -1712,6 +2009,7 @@ export default function App() {
 
   const isCompanyTab = activeTab.startsWith("company-");
   const isCsTab = activeTab === "cs";
+  const isPatternTab = activeTab === "patterns";
   const activeCompany = isCompanyTab
     ? companies.find((c) => `company-${c.id}` === activeTab)
     : null;
@@ -1756,6 +2054,26 @@ export default function App() {
           </h1>
           <p style={{ color: "var(--text2)", fontSize: 14 }}>
             OOPs · OS · DBMS · CN — {totalCsQuestions} interview questions
+          </p>
+        </div>
+      )}
+
+      {isPatternTab && (
+        <div style={{ padding: "32px 0 24px", textAlign: "center" }}>
+          <h1
+            style={{
+              fontSize: "clamp(1.6rem,4vw,2.8rem)",
+              fontWeight: 800,
+              color: "var(--text)",
+              letterSpacing: "-0.5px",
+              marginBottom: 4,
+            }}
+          >
+            Pattern Sheet
+          </h1>
+          <p style={{ color: "var(--text2)", fontSize: 14 }}>
+            Organized by technique, not by week — {totalPatternProblems}{" "}
+            problems
           </p>
         </div>
       )}
@@ -1897,6 +2215,19 @@ export default function App() {
           subjects={csSubjects}
           completed={csCompleted}
           toggle={csToggle}
+        />
+      )}
+
+      {/* Patterns tab */}
+      {isPatternTab && (
+        <PatternPage
+          categories={patternCategories}
+          completed={patternCompleted}
+          toggle={patternToggle}
+          notes={notes}
+          code={code}
+          onOpenNote={openNote}
+          onOpenCode={openCode}
         />
       )}
 
